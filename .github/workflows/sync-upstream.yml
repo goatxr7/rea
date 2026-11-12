@@ -1,0 +1,41 @@
+name: Sync upstream fork
+
+on:
+  schedule:
+    - cron: '17 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Merge upstream into main
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync from upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_REPO: ${{ github.repository }}
+          TARGET_BRANCH: main
+        shell: bash
+        run: |
+          set -euo pipefail
+          result_file="$(mktemp)"
+          status="$(curl --silent --show-error --output "$result_file" --write-out '%{http_code}' \
+            --request POST \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2026-03-10' \
+            "https://api.github.com/repos/$TARGET_REPO/merge-upstream" \
+            --data "{\"branch\":\"$TARGET_BRANCH\"}")"
+          cat "$result_file"
+          echo
+          if [[ "$status" != "200" ]]; then
+            echo "::error::Upstream synchronization failed (HTTP $status)."
+            exit 1
+          fi
